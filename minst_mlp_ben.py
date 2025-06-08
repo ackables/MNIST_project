@@ -2,23 +2,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import math
 
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
 def mnist_loader(training_cycles, data_dir="./MNIST_dataset"):
-    mnist_tensor = transforms.Compose(
-        transforms.ToTensor
-    )
+    mnist_tensor = transforms.Compose([
+        transforms.ToTensor()
+    ])
 
-    training_set = datasets.MNIST(root=data_dir, train=True, download=True, target_transform=mnist_tensor)
-    test_set = datasets.MNIST(root=data_dir, train=False, download=True, target_transform=mnist_tensor)
+    training_set = datasets.MNIST(root=data_dir, train=True, download=True, transform=mnist_tensor)
+    test_set = datasets.MNIST(root=data_dir, train=False, download=True, transform=mnist_tensor)
 
-    # sets batch size to be the number of training set elements divided by the number of training cycles
-    # cast as an integer to eliminate partially filled batches
-    batch_size = int((len(training_set)/training_cycles))
+    batch_size = 64
 
-    print(batch_size)
 
     training_loader = DataLoader(
         training_set,
@@ -41,8 +39,9 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         # put nin into a list and append it with nouts list
         dims = [nin]+nouts
-        for n in range(len(nouts)): # for the number of items in nouts, create layers connecting number of inputs to next number in list
-            self.layers = nn.ModuleList(nn.Linear(dims[n], dims[n+1]))
+
+        # for the number of items in nouts, create layers connecting number of inputs to next number in list
+        self.layers = nn.ModuleList(nn.Linear(dims[n], dims[n+1]) for n in range(len(nouts)))
 
         # add activations list to self
         self.activations = nn.ModuleList(activations)
@@ -53,28 +52,100 @@ class MLP(nn.Module):
 
         # apply activation functions to each layer of the MLP
         for layer, act in zip(self.layers, self.activations):
-            x = act(layer(x)) # eg F.relu(self.activations(x))
+            x = act(layer(x)) # eg F.relu(self.layers(x))
+
+        return x
+
+def training_routine(model, device, training_loader, optimization_function, cycle, logging_interval = 100):
+    model.train() # set model into training mode
+    loss_func = nn.CrossEntropyLoss() # cross entropy loss function
+    loss_total = 0.0
+
+    for batch_num, (data, target) in enumerate(training_loader, start=1):
+        # move data to GPU or CPU device
+        data = data.to(device)
+        target = target.to(device)
+
+        optimization_function.zero_grad()
+        output = model(data) # run batch through the MLP nn
+        loss = loss_func(output, target) # compute loss comparing model output and true value
+        loss.backward() # back propagation step
+        optimization_function.step() # update model weights based on back propagation step
+
+        loss_total += loss.item() # keep running total of losses at each step
+        if batch_num % logging_interval == 0:
+            loss_mean = loss_total / batch_num
+
+            print(
+                f"Cycle #: {cycle:03d}"
+                f"[{batch_num * len(data)}/{len(training_loader.dataset)} " # how many images out of total training set size have been processed
+                f"({100. * batch_num / len(training_loader):.0f}%)]\t" # what percentage of training data has been processed
+                f"Loss: {loss_mean}" # average loss for this cycle
+            )
+            loss_total = 0.0 # set loss total back to 0 to compute average for next cycle
+
+def evaluate(model, device, test_loader):
+    model.eval() # set model to testing mode
+    loss_func = nn.CrossEntropyLoss(reduction="sum")  # sum losses for computing average
+    test_loss = 0.0
+    correct = 0
+
+    with torch.no_grad():  # no gradient computation during evaluation
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)             # [batch_size, 10]
+            test_loss += loss_func(output, target).item()
+            pred = output.argmax(dim=1, keepdim=True)  # predicted class index
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss /= len(test_loader.dataset)
+    accuracy = 100.0 * correct / len(test_loader.dataset)
+    print(
+        f"\nTest set: Average loss: {test_loss:.4f}, "
+        f"Accuracy: {correct}/{len(test_loader.dataset)} "
+        f"({accuracy:.2f}%)\n"
+    )
+
+
+
 
 
 
 def main():
     # number of training cycles
-    training_cycles = 200
+    training_cycles = 25
+    # set learning rate
+    learning_rate = 0.05
 
     # set number of neurons at each layer of MLP
     nouts = [256, 512, 128, 10]
 
+    # set CPU as device
+    device = torch.device("cpu")
+
     # set activation functions for MLP layers
     activations = [
-        F.ReLU,
-        F.Tanh,
-        F.Tanh,
-        F.Identity
+        nn.ReLU(),
+        nn.Tanh(),
+        nn.Tanh(),
+        nn.Identity()
     ]
 
-    training_loader = mnist_loader(training_cycles=training_cycles)
+    # load data
+    training_loader, test_loader = mnist_loader(training_cycles=training_cycles)
 
-    model = MLP(nouts=nouts)
+    # create model with activation functions and number of neurons at each layer
+    model = MLP(activations=activations, nouts=nouts).to(device)
+
+    # set optimization function used for gradient descent
+    optimization_function = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+
+    # Training and evaluation loop
+    for cycle in range(1, training_cycles + 1):
+        training_routine(model, device, training_loader, optimization_function, cycle)
+        evaluate(model, device, test_loader)
+
+
 
 
 if __name__ == "__main__":
