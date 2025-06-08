@@ -50,7 +50,7 @@ class MLP(nn.Module):
         # x comes in as shape [batch_size, 1, 28, 28]
         x = x.view(x.size(0), -1)      # flatten → [batch_size, 784]
         x = F.relu(self.fc1(x))        # first hidden layer + ReLU
-        x = F.tanh(self.fc2(x))        # second hidden layer + ReLU
+        x = F.tanh(self.fc2(x))        # second hidden layer + tanh
         x = self.fc3(x)                # logits for 10 classes
         return x
 
@@ -110,7 +110,7 @@ def evaluate(model, device, test_loader):
 def main():
     # Hyperparameters
     batch_size = 64
-    learning_rate = 0.01
+    learning_rate = 0.001
     num_epochs = 5
 
     # Device: use GPU if available, otherwise CPU
