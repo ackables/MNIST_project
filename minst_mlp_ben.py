@@ -128,6 +128,7 @@ def evaluate(model, device, test_loader):
             pred = output.argmax(dim=1, keepdim=True)  # predicted class index
             correct += pred.eq(target.view_as(pred)).sum().item()
 
+
     test_loss /= len(test_loader.dataset)
     accuracy = 100.0 * correct / len(test_loader.dataset)
     print(
@@ -135,6 +136,12 @@ def evaluate(model, device, test_loader):
         f"Accuracy: {correct}/{len(test_loader.dataset)} "
         f"({accuracy:.2f}%)\n"
     )
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            print(f"output tensor: {output[0]}\ntarget: {target[0]}")
+            break
 
 
 
@@ -143,20 +150,20 @@ def evaluate(model, device, test_loader):
 
 def main():
     # number of training cycles
-    training_cycles = 2
+    training_cycles = 100
     # set learning rate
-    learning_rate = 0.05
+    learning_rate = 0.01
 
     # set number of neurons at each layer of MLP
-    nouts = [64, 64, 10]
+    nouts = [128, 64, 10]
 
     # set CPU as device
     device = torch.device("cpu")
 
     # set activation functions for MLP layers
     activations = [
-        nn.Tanh(),
-        nn.Tanh(),
+        nn.LeakyReLU(),
+        nn.LeakyReLU(),
         nn.Identity()
     ]
 
@@ -174,9 +181,9 @@ def main():
         training_routine(model, device, training_loader, optimization_function, cycle)
         evaluate(model, device, test_loader)
 
-    for k, v in model.named_parameters():
-        print(k, v)
-    torch.save(model.state_dict(), "mnist_mlp.pth")
+    # for k, v in model.named_parameters():
+    #     print(k, v)
+    # torch.save(model.state_dict(), "mnist_mlp.pth")
 
 
 
