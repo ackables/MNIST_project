@@ -7,9 +7,39 @@ import math
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
+def mnist_norm_param_gen(data_dir="./MNIST_dataset"):
+    training_set = training_set = datasets.MNIST(root=data_dir, train=True, download=True, transform=transforms.ToTensor())
+
+    training_loader = DataLoader(
+        training_set,
+        batch_size=64,
+        shuffle=False,
+        num_workers=2
+    )
+
+    sum = 0.0
+    sum_sq = 0.0
+    num_images = 0.0
+
+    for images, _ in training_set:
+        sum += images.sum()
+        sum_sq += (images**2).sum()
+        num_images += images.numel()
+
+    mean = sum / num_images
+    var = (sum_sq / num_images) - mean**2
+    std = torch.sqrt(var)
+
+    print(f"mean: {mean}\tstd: {std}")
+    return mean, std
+
+
+
 def mnist_loader(training_cycles, data_dir="./MNIST_dataset"):
+    mean, std = mnist_norm_param_gen() # generate mean and std of MNIST dataset for normalization
     mnist_tensor = transforms.Compose([
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize((mean,), (std,))
     ])
 
     training_set = datasets.MNIST(root=data_dir, train=True, download=True, transform=mnist_tensor)
@@ -22,14 +52,14 @@ def mnist_loader(training_cycles, data_dir="./MNIST_dataset"):
         training_set,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=3
+        num_workers=2
     )
 
     test_loader = DataLoader(
         test_set,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=3
+        num_workers=2
     )
 
     return training_loader, test_loader
@@ -113,19 +143,18 @@ def evaluate(model, device, test_loader):
 
 def main():
     # number of training cycles
-    training_cycles = 25
+    training_cycles = 2
     # set learning rate
     learning_rate = 0.05
 
     # set number of neurons at each layer of MLP
-    nouts = [256, 512, 128, 10]
+    nouts = [64, 64, 10]
 
     # set CPU as device
     device = torch.device("cpu")
 
     # set activation functions for MLP layers
     activations = [
-        nn.ReLU(),
         nn.Tanh(),
         nn.Tanh(),
         nn.Identity()
@@ -144,6 +173,10 @@ def main():
     for cycle in range(1, training_cycles + 1):
         training_routine(model, device, training_loader, optimization_function, cycle)
         evaluate(model, device, test_loader)
+
+    for k, v in model.named_parameters():
+        print(k, v)
+    torch.save(model.state_dict(), "mnist_mlp.pth")
 
 
 
