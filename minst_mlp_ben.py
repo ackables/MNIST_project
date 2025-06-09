@@ -140,7 +140,8 @@ def evaluate(model, device, test_loader):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            print(f"output tensor: {output[0]}\ntarget: {target[0]}")
+            pred = output.argmax(dim=1, keepdim=True)
+            print(f"output tensor: {output[0]}\ntarget: {target[0]}\t prediction: {pred[0].item()}")
             break
 
 
@@ -150,12 +151,12 @@ def evaluate(model, device, test_loader):
 
 def main():
     # number of training cycles
-    training_cycles = 100
+    training_cycles = 30
     # set learning rate
-    learning_rate = 0.01
+    learning_rate = 0.005
 
     # set number of neurons at each layer of MLP
-    nouts = [128, 64, 10]
+    nouts = [2048, 1024, 10]
 
     # set CPU as device
     device = torch.device("cpu")
@@ -174,7 +175,7 @@ def main():
     model = MLP(activations=activations, nouts=nouts).to(device)
 
     # set optimization function used for gradient descent
-    optimization_function = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    optimization_function = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.85, nesterov=True)
 
     # Training and evaluation loop
     for cycle in range(1, training_cycles + 1):
