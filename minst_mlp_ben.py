@@ -3,18 +3,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import math
+import numpy as np
+import matplotlib.pyplot as plt
 
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
 def mnist_norm_param_gen(data_dir="./MNIST_dataset"):
-    training_set = training_set = datasets.MNIST(root=data_dir, train=True, download=True, transform=transforms.ToTensor())
+    training_set = datasets.MNIST(root=data_dir, train=True, download=True, transform=transforms.ToTensor())
 
     training_loader = DataLoader(
         training_set,
         batch_size=64,
         shuffle=False,
-        num_workers=2
+        num_workers=0
     )
 
     sum = 0.0
@@ -52,14 +55,14 @@ def mnist_loader(training_cycles, data_dir="./MNIST_dataset"):
         training_set,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=2
+        num_workers=0
     )
 
     test_loader = DataLoader(
         test_set,
-        batch_size=batch_size,
+        batch_size=10000,
         shuffle=True,
-        num_workers=2
+        num_workers=0
     )
 
     return training_loader, test_loader
@@ -68,7 +71,7 @@ class MLP(nn.Module):
     def __init__(self, activations, nouts, nin=28**2):
         super(MLP, self).__init__()
         # put nin into a list and append it with nouts list
-        dims = [nin]+nouts
+        dims = [nin] + nouts
 
         # for the number of items in nouts, create layers connecting number of inputs to next number in list
         self.layers = nn.ModuleList(nn.Linear(dims[n], dims[n+1]) for n in range(len(nouts)))
@@ -82,7 +85,7 @@ class MLP(nn.Module):
 
         # apply activation functions to each layer of the MLP
         for layer, act in zip(self.layers, self.activations):
-            x = act(layer(x)) # eg F.relu(self.layers(x))
+            x = act(layer(x)) # eg nn.ReLU(self.layers(x))
 
         return x
 
@@ -129,6 +132,9 @@ def evaluate(model, device, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
 
 
+
+
+
     test_loss /= len(test_loader.dataset)
     accuracy = 100.0 * correct / len(test_loader.dataset)
     print(
@@ -144,19 +150,25 @@ def evaluate(model, device, test_loader):
             print(f"output tensor: {output[0]}\ntarget: {target[0]}\t prediction: {pred[0].item()}")
             break
 
+    print(confusion_matrix(target, pred, labels=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+    print(f"\nAccuracy: {accuracy_score(target, pred)}")
+    print(f"\n{classification_report(target, pred, target_names=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], digits=4)}")
 
+    return test_loss
 
 
 
 
 def main():
+    loss_arr = []
+    step_arr = []
     # number of training cycles
-    training_cycles = 30
+    training_cycles = 50
     # set learning rate
-    learning_rate = 0.005
+    learning_rate = 0.01
 
     # set number of neurons at each layer of MLP
-    nouts = [2048, 1024, 10]
+    nouts = [1024, 512, 512, 10]
 
     # set CPU as device
     device = torch.device("cpu")
@@ -164,7 +176,8 @@ def main():
     # set activation functions for MLP layers
     activations = [
         nn.LeakyReLU(),
-        nn.LeakyReLU(),
+        nn.Sigmoid(),
+        nn.Tanh(),
         nn.Identity()
     ]
 
@@ -180,7 +193,13 @@ def main():
     # Training and evaluation loop
     for cycle in range(1, training_cycles + 1):
         training_routine(model, device, training_loader, optimization_function, cycle)
-        evaluate(model, device, test_loader)
+        step_arr.append(cycle)
+        loss_arr.append(evaluate(model, device, test_loader))
+
+    print(loss_arr)
+    plt.plot(step_arr, loss_arr)
+    plt.show()
+
 
     # for k, v in model.named_parameters():
     #     print(k, v)
